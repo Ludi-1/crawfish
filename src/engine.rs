@@ -1,4 +1,4 @@
-use chess::{Board, MoveGen, ChessMove, Square, Color, Piece};
+use chess::{Board, MoveGen, ChessMove, Square, Piece};
 use std::str::FromStr;
 
 pub struct Engine {
