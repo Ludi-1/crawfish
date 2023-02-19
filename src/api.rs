@@ -4,21 +4,29 @@ use std::io::{Error, ErrorKind};
 use futures_util::stream::{TryStreamExt};
 use tokio::io::AsyncBufReadExt;
 use serde_json::{Value};
-#[path = "engine.rs"] mod engine;
+use crate::engine;
+use tokio::runtime::Runtime;
+
 pub struct Lichess {
     client: Client,
     url_base: String,
     headers: reqwest::header::HeaderMap,
+    token: String,
 }
 
 impl Lichess {
-    pub fn new() -> Self {
+    pub fn new(token: &str) -> Self {
         let client = reqwest::Client::new();
         let url_base = String::from("https://lichess.org");
-        let token = String::from("TOKEN");
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(reqwest::header::AUTHORIZATION, reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token)).unwrap());
-        Self{client, url_base, headers}
+        Self{token: token.to_string(), client: client, url_base: url_base, headers: headers}
+    }
+
+    pub fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let rt  = Runtime::new()?;
+        rt.block_on(self.event_stream());
+        Ok(())
     }
 
     // Stream the events reaching a lichess user in real time as ndjson.
@@ -39,8 +47,9 @@ impl Lichess {
         while let Ok(Some(line)) = lines.next_line().await {
             let json_stream = serde_json::Deserializer::from_str(line.as_str()).into_iter::<Value>();
             for event in json_stream {
+                let lichess_token = self.token.clone();
                 tokio::spawn(async move {
-                    let lichess_obj = Lichess::new();
+                    let lichess_obj = Lichess::new(&lichess_token);
                     lichess_obj.handle_event_stream(Ok(event.expect("Bad event_stream"))).await;
                 });
             }

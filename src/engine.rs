@@ -31,7 +31,7 @@ impl Engine {
         let dest_str = &uci_move[2..];
         let mut promote = None;
         if uci_move.len() == 5{
-            let mut promote_char = uci_move.chars().nth(4);
+            let promote_char = uci_move.chars().nth(4);
             match promote_char {
                 Some('q') => promote = Some(Piece::Queen),
                 Some('n') => promote = Some(Piece::Knight),
