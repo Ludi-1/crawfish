@@ -27,7 +27,7 @@ fn main() {
         input.read_line(&mut buffer).expect("Failed to read input");
 
         let tokens: Vec<&str> = buffer.trim().split(' ').collect();
-        fs::write("~/Documents/GitHub/crawfish/debug.txt", tokens.join(" ")).expect("Unable to write file");
+
         match tokens[0] {
             "uci" => {
                 // Send UCI identification information
