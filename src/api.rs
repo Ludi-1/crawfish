@@ -19,8 +19,8 @@ impl Lichess {
         let client = reqwest::Client::new();
         let url_base = String::from("https://lichess.org");
         let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert(reqwest::header::AUTHORIZATION, reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token)).unwrap());
-        Self{token: token.to_string(), client: client, url_base: url_base, headers: headers}
+        headers.insert(reqwest::header::AUTHORIZATION, reqwest::header::HeaderValue::from_str(&format!("Bearer {token}")).unwrap());
+        Self{token: token.to_string(), client, url_base, headers}
     }
 
     pub fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
@@ -67,7 +67,7 @@ impl Lichess {
             let game_id = event.as_ref().unwrap()["game"]["gameId"].as_str().unwrap();
             self.stream_game(game_id).await;
         } else { // challengeCanceled or challengeDeclined
-            println!("{:?}", req_type);
+            println!("{req_type:?}");
         }
     }
 
@@ -127,7 +127,7 @@ impl Lichess {
 
     pub async fn calculate_engine(&self, game_id: &str, played_moves: &str){
         let mut engine = engine::Engine::new("startpos");
-        if played_moves != "" {
+        if !played_moves.is_empty() {
             let move_list = played_moves.split_whitespace();
             for moves in move_list {
                 engine.play_uci_move(moves);

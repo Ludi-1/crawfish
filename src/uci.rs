@@ -48,12 +48,12 @@ impl Uci {
                     // Send the best move for the current position
                     let best_move = engine.calc_move();
                     writeln!(output, "info depth 1")?;
-                    writeln!(output, "info multipv 1 depth 1 score cp 1 pv {}", best_move)?;
-                    writeln!(output, "bestmove {}", best_move)?;   
+                    writeln!(output, "info multipv 1 depth 1 score cp 1 pv {best_move}")?;
+                    writeln!(output, "bestmove {best_move}")?;   
                 }
                 "stop" => {
                     let best_move = engine.calc_move();
-                    writeln!(output, "bestmove {}", best_move)?;                
+                    writeln!(output, "bestmove {best_move}")?;                
                 }
                 "quit" => {
                     // Quit the program

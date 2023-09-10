@@ -7,12 +7,11 @@ pub struct Engine {
 
 impl Engine {
     pub fn new(start_pos: &str) -> Self {
-        let board: chess::Board;
-        if start_pos == "startpos" {
-            board = Board::default();
+        let board: chess::Board = if start_pos == "startpos" {
+            Board::default()
         } else {
-            board = Board::from_str(start_pos).expect("start_pos invalid");
-        }
+            Board::from_str(start_pos).expect("start_pos invalid")
+        };
         Self{board}
     }
 
@@ -21,8 +20,7 @@ impl Engine {
         // Return the best move as a string in UCI format
         // For example: "e2e4"
         let mut movegen = MoveGen::new_legal(&self.board);
-        let next_move = movegen.next().expect("Error movegen").to_string();
-        return next_move;
+        movegen.next().expect("Error movegen").to_string()
     }
 
     pub fn play_uci_move(&mut self, uci_move: &str) {
