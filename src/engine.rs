@@ -1,4 +1,4 @@
-use chess::{Board, MoveGen, ChessMove, Square, Piece};
+use chess::{Board, ChessMove, MoveGen, Piece, Square};
 use std::str::FromStr;
 
 pub struct Engine {
@@ -12,7 +12,7 @@ impl Engine {
         } else {
             Board::from_str(start_pos).expect("start_pos invalid")
         };
-        Self{board}
+        Self { board }
     }
 
     pub fn calc_move(&self) -> String {
@@ -24,11 +24,11 @@ impl Engine {
     }
 
     pub fn play_uci_move(&mut self, uci_move: &str) {
-        assert!(4 <= uci_move.len() && uci_move.len() <= 5 );
+        assert!(4 <= uci_move.len() && uci_move.len() <= 5);
         let src_str = &uci_move[..2];
         let dest_str = &uci_move[2..];
         let mut promote = None;
-        if uci_move.len() == 5{
+        if uci_move.len() == 5 {
             let promote_char = uci_move.chars().nth(4);
             match promote_char {
                 Some('q') => promote = Some(Piece::Queen),
@@ -45,5 +45,4 @@ impl Engine {
         self.board.make_move(mov, &mut new_board);
         self.board = new_board;
     }
-
 }

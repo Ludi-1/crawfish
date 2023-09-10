@@ -1,10 +1,9 @@
-use std::io::{self, Write};
+use crate::engine;
 use chess::Board;
 use chess::Game;
-use crate::engine;
+use std::io::{self, Write};
 
-pub struct Uci {
-}
+pub struct Uci {}
 
 impl Uci {
     pub fn run() -> Result<(), std::io::Error> {
@@ -49,11 +48,11 @@ impl Uci {
                     let best_move = engine.calc_move();
                     writeln!(output, "info depth 1")?;
                     writeln!(output, "info multipv 1 depth 1 score cp 1 pv {best_move}")?;
-                    writeln!(output, "bestmove {best_move}")?;   
+                    writeln!(output, "bestmove {best_move}")?;
                 }
                 "stop" => {
                     let best_move = engine.calc_move();
-                    writeln!(output, "bestmove {best_move}")?;                
+                    writeln!(output, "bestmove {best_move}")?;
                 }
                 "quit" => {
                     // Quit the program
