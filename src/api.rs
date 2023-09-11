@@ -3,10 +3,11 @@ use futures_util::stream::TryStreamExt;
 use reqwest::Client;
 use serde_json::Value;
 use std::io::{Error, ErrorKind};
+use std::process::exit;
 use tokio::io::AsyncBufReadExt;
 use tokio::runtime::Runtime;
+use tokio::task::JoinHandle;
 use tokio_util::io::StreamReader;
-use std::process::exit;
 
 pub struct Lichess {
     client: Client,
@@ -58,44 +59,36 @@ impl Lichess {
         while let Ok(Some(line)) = lines.next_line().await {
             let json_stream =
                 serde_json::Deserializer::from_str(line.as_str()).into_iter::<Value>();
+
+            let mut futures = Vec::new();
+
             for event in json_stream {
+                let event = event.map_err(|e| e.to_string())?;
                 let lichess_token = self.token.clone();
-                tokio::spawn(async move {
-                    let lichess_obj = match Lichess::new(lichess_token){
-                        Ok(lichess_obj) => lichess_obj,
-                        Err(err) => {
-                            println!("{err}");
-                            exit(42)
-                        },
-                    };
-                    match lichess_obj
-                        .handle_event_stream(Ok(event.expect("Bad event_stream")))
-                        .await
-                    {
-                        Ok(()) => {}
-                        Err(err) => {
-                            println!("{err}");
-                            exit(42)
-                        }
-                    }
+                let handle_future: JoinHandle<Result<(), String>> = tokio::spawn(async move {
+                    let lichess_obj = Lichess::new(lichess_token)?;
+                    lichess_obj.handle_event_stream(event).await?;
+                    Ok(())
                 });
+                futures.push(handle_future);
+            }
+
+            // Wait for all spawned futures to complete
+            for result in futures {
+                result.await.map_err(|e| e.to_string())?? // Unwrap and propagate any errors
             }
         }
         Ok(())
     }
 
-    pub async fn handle_event_stream(
-        &self,
-        event: Result<Value, serde_json::Error>,
-    ) -> Result<(), String> {
-        match event.as_ref().unwrap()["type"].as_str() {
+    pub async fn handle_event_stream(&self, event: Value) -> Result<(), String> {
+        match event["type"].as_str() {
             Some(req_type) => {
                 match req_type {
                     "challenge" => {
                         // A player sends you a challenge or you challenge someone
                         println!("challenge");
-                        let challenge_id =
-                            event.as_ref().unwrap()["challenge"]["id"].as_str().unwrap();
+                        let challenge_id = event["challenge"]["id"].as_str().unwrap();
                         self.challenge_accept(challenge_id)
                             .await
                             .expect("Challenge error");
@@ -104,7 +97,7 @@ impl Lichess {
                     "gameStart" => {
                         // Start of a game
                         println!("gameStart");
-                        let game_id = event.as_ref().unwrap()["game"]["gameId"].as_str().unwrap();
+                        let game_id = event["game"]["gameId"].as_str().unwrap();
                         self.stream_game(game_id).await?;
                         Ok(())
                     }
