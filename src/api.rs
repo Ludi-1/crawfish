@@ -56,11 +56,10 @@ impl Lichess {
             .map_err(|err| Error::new(ErrorKind::Other, err));
 
         let mut lines = StreamReader::new(stream).lines();
+        let mut futures = Vec::new();
         while let Ok(Some(line)) = lines.next_line().await {
             let json_stream =
                 serde_json::Deserializer::from_str(line.as_str()).into_iter::<Value>();
-
-            let mut futures = Vec::new();
 
             for event in json_stream {
                 let event = event.map_err(|e| e.to_string())?;
@@ -72,11 +71,10 @@ impl Lichess {
                 });
                 futures.push(handle_future);
             }
-
+        }
             // Wait for all spawned futures to complete
-            for result in futures {
-                result.await.map_err(|e| e.to_string())?? // Unwrap and propagate any errors
-            }
+        for result in futures {
+            result.await.map_err(|e| e.to_string())?? // Unwrap and propagate any errors
         }
         Ok(())
     }
@@ -88,7 +86,8 @@ impl Lichess {
                     "challenge" => {
                         // A player sends you a challenge or you challenge someone
                         println!("challenge");
-                        let challenge_id = event["challenge"]["id"].as_str().unwrap();
+                        let challenge_id =
+                            event["challenge"]["id"].as_str().ok_or("No challenge id")?;
                         self.challenge_accept(challenge_id)
                             .await
                             .expect("Challenge error");
@@ -101,6 +100,7 @@ impl Lichess {
                         self.stream_game(game_id).await?;
                         Ok(())
                     }
+                    "gameFinish" => Ok(()),
                     _ => Err(format!("Unknown req_type {req_type}")),
                 }
             }
@@ -171,14 +171,21 @@ impl Lichess {
             }
             "gameState" => {
                 let status = event.as_ref().unwrap()["status"].as_str().unwrap();
-                if status == "started" {
-                    let played_moves = event.as_ref().unwrap()["moves"].as_str().unwrap();
-                    self.calculate_engine(game_id, played_moves).await
-                } else {
-                    Err("gameState status != started".to_string())
+                match status {
+                    "started" => {
+                        let played_moves = event.as_ref().unwrap()["moves"].as_str().unwrap();
+                        self.calculate_engine(game_id, played_moves).await
+                    }
+                    "resign" => {
+                        println!("resign");
+                        Ok(())
+                    }
+                    _ => Err(format!("gameState status {status}")),
                 }
             }
-            _ => todo!(),
+            _ => {
+                Err(format!("Unknown game_type {game_type}"))
+            }
         }
     }
 
