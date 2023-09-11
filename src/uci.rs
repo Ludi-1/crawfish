@@ -6,7 +6,7 @@ use std::io::{self, Write};
 pub struct Uci {}
 
 impl Uci {
-    pub fn run() -> Result<(), std::io::Error> {
+    pub fn run() -> Result<(), String> {
         // Connect to Chess Arena
         let input = io::stdin();
         let mut output = io::stdout();
@@ -19,18 +19,19 @@ impl Uci {
 
         loop {
             buffer.clear();
-            input.read_line(&mut buffer).expect("Failed to read input");
+            input.read_line(&mut buffer).map_err(|e| e.to_string())?;
 
             let tokens: Vec<&str> = buffer.trim().split(' ').collect();
 
             match tokens[0] {
                 "uci" => {
-                    writeln!(output, "id name Crawfish")?;
-                    writeln!(output, "id author Ludi-1 and Longjie99hu")?;
-                    writeln!(output, "uciok")?;
+                    writeln!(output, "id name Crawfish").map_err(|e| e.to_string())?;
+                    writeln!(output, "id author Ludi-1 and Longjie99hu")
+                        .map_err(|e| e.to_string())?;
+                    writeln!(output, "uciok").map_err(|e| e.to_string())?;
                 }
                 "isready" => {
-                    writeln!(output, "readyok")?;
+                    writeln!(output, "readyok").map_err(|e| e.to_string())?;
                 }
                 "position" => {
                     // Update the current position
@@ -45,14 +46,15 @@ impl Uci {
                 }
                 "go" => {
                     // Send the best move for the current position
-                    let best_move = engine.calc_move();
-                    writeln!(output, "info depth 1")?;
-                    writeln!(output, "info multipv 1 depth 1 score cp 1 pv {best_move}")?;
-                    writeln!(output, "bestmove {best_move}")?;
+                    let best_move = engine.calc_move()?.to_string();
+                    writeln!(output, "info depth 1").map_err(|e| e.to_string())?;
+                    writeln!(output, "info multipv 1 depth 1 score cp 1 pv {best_move}")
+                        .map_err(|e| e.to_string())?;
+                    writeln!(output, "bestmove {best_move}").map_err(|e| e.to_string())?;
                 }
                 "stop" => {
-                    let best_move = engine.calc_move();
-                    writeln!(output, "bestmove {best_move}")?;
+                    let best_move = engine.calc_move()?.to_string();
+                    writeln!(output, "bestmove {best_move}").map_err(|e| e.to_string())?;
                 }
                 "quit" => {
                     // Quit the program

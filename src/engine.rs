@@ -15,12 +15,15 @@ impl Engine {
         Self { board }
     }
 
-    pub fn calc_move(&self) -> String {
+    pub fn calc_move(&self) -> Result<ChessMove, String> {
         // Implement your chess engine algorithm here
         // Return the best move as a string in UCI format
         // For example: "e2e4"
         let mut movegen = MoveGen::new_legal(&self.board);
-        movegen.next().expect("Error movegen").to_string()
+        match movegen.next() {
+            Some(chess_move) => Ok(chess_move),
+            None => Err("No legal moves".to_string()),
+        }
     }
 
     pub fn play_uci_move(&mut self, uci_move: &str) {

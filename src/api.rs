@@ -6,6 +6,7 @@ use std::io::{Error, ErrorKind};
 use tokio::io::AsyncBufReadExt;
 use tokio::runtime::Runtime;
 use tokio_util::io::StreamReader;
+use std::process::exit;
 
 pub struct Lichess {
     client: Client,
@@ -15,30 +16,31 @@ pub struct Lichess {
 }
 
 impl Lichess {
-    pub fn new(token: &str) -> Self {
+    pub fn new(token: String) -> Result<Self, String> {
         let client = reqwest::Client::new();
-        let url_base = String::from("https://lichess.org");
+        let url_base = "https://lichess.org".to_string();
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
             reqwest::header::AUTHORIZATION,
-            reqwest::header::HeaderValue::from_str(&format!("Bearer {token}")).unwrap(),
+            reqwest::header::HeaderValue::from_str(&format!("Bearer {token}"))
+                .map_err(|e| e.to_string())?,
         );
-        Self {
-            token: token.to_string(),
+        Ok(Self {
             client,
             url_base,
             headers,
-        }
+            token,
+        })
     }
 
     pub fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
         let rt = Runtime::new()?;
-        rt.block_on(self.event_stream());
+        rt.block_on(self.event_stream())?;
         Ok(())
     }
 
     // Stream the events reaching a lichess user in real time as ndjson.
-    pub async fn event_stream(&self) {
+    pub async fn event_stream(&self) -> Result<(), String> {
         let url = format!("{}/api/stream/event", self.url_base);
         let response = self
             .client
@@ -46,7 +48,7 @@ impl Lichess {
             .headers(self.headers.clone())
             .send()
             .await
-            .expect("Response error");
+            .map_err(|e| e.to_string())?;
 
         let stream = response
             .bytes_stream()
@@ -59,32 +61,57 @@ impl Lichess {
             for event in json_stream {
                 let lichess_token = self.token.clone();
                 tokio::spawn(async move {
-                    let lichess_obj = Lichess::new(&lichess_token);
-                    lichess_obj
+                    let lichess_obj = match Lichess::new(lichess_token){
+                        Ok(lichess_obj) => lichess_obj,
+                        Err(err) => {
+                            println!("{err}");
+                            exit(42)
+                        },
+                    };
+                    match lichess_obj
                         .handle_event_stream(Ok(event.expect("Bad event_stream")))
-                        .await;
+                        .await
+                    {
+                        Ok(()) => {}
+                        Err(err) => {
+                            println!("{err}");
+                            exit(42)
+                        }
+                    }
                 });
             }
         }
+        Ok(())
     }
 
-    pub async fn handle_event_stream(&self, event: Result<Value, serde_json::Error>) {
-        let req_type = event.as_ref().unwrap()["type"].as_str();
-        if req_type == Some("challenge") {
-            // A player sends you a challenge or you challenge someone
-            println!("challenge");
-            let challenge_id = event.as_ref().unwrap()["challenge"]["id"].as_str().unwrap();
-            self.challenge_accept(challenge_id)
-                .await
-                .expect("Challenge error");
-        } else if req_type == Some("gameStart") {
-            // Start of a game
-            println!("gameStart");
-            let game_id = event.as_ref().unwrap()["game"]["gameId"].as_str().unwrap();
-            self.stream_game(game_id).await;
-        } else {
-            // challengeCanceled or challengeDeclined
-            println!("{req_type:?}");
+    pub async fn handle_event_stream(
+        &self,
+        event: Result<Value, serde_json::Error>,
+    ) -> Result<(), String> {
+        match event.as_ref().unwrap()["type"].as_str() {
+            Some(req_type) => {
+                match req_type {
+                    "challenge" => {
+                        // A player sends you a challenge or you challenge someone
+                        println!("challenge");
+                        let challenge_id =
+                            event.as_ref().unwrap()["challenge"]["id"].as_str().unwrap();
+                        self.challenge_accept(challenge_id)
+                            .await
+                            .expect("Challenge error");
+                        Ok(())
+                    }
+                    "gameStart" => {
+                        // Start of a game
+                        println!("gameStart");
+                        let game_id = event.as_ref().unwrap()["game"]["gameId"].as_str().unwrap();
+                        self.stream_game(game_id).await?;
+                        Ok(())
+                    }
+                    _ => Err(format!("Unknown req_type {req_type}")),
+                }
+            }
+            None => Err("api.handle_event_tream: No event type".to_string()),
         }
     }
 
@@ -102,7 +129,7 @@ impl Lichess {
     }
 
     // Stream positions and moves of any ongoing game, in ndjson.
-    pub async fn stream_game(&self, game_id: &str) {
+    pub async fn stream_game(&self, game_id: &str) -> Result<(), String> {
         let url = format!("{}/api/bot/game/stream/{game_id}", self.url_base);
         let response = self
             .client
@@ -123,35 +150,46 @@ impl Lichess {
             for event in json_stream {
                 // print!("{:?}", event);
                 self.handle_game_stream(Ok(event.expect("Stream_game error")), game_id)
-                    .await;
+                    .await?;
             }
         }
+        Ok(())
     }
 
-    pub async fn handle_game_stream(&self, event: Result<Value, serde_json::Error>, game_id: &str) {
+    pub async fn handle_game_stream(
+        &self,
+        event: Result<Value, serde_json::Error>,
+        game_id: &str,
+    ) -> Result<(), String> {
         let game_type = event.as_ref().unwrap()["type"].as_str().unwrap();
         // println!("gameState: {:?}", game_type);
-        if game_type == "gameFull" {
-            // TODO: Later support other gamemodes
-            // let fen = event.as_ref().unwrap()["initialFen"].as_str().unwrap();
-            // engine = engine::Engine::new(fen);
-            let status = event.as_ref().unwrap()["state"]["status"].as_str().unwrap();
-            if status == "started" {
-                let played_moves = event.as_ref().unwrap()["state"]["moves"].as_str().unwrap();
-                self.calculate_engine(game_id, played_moves).await;
+        match game_type {
+            "gameFull" => {
+                // TODO: Later support other gamemodes
+                // let fen = event.as_ref().unwrap()["initialFen"].as_str().unwrap();
+                // engine = engine::Engine::new(fen);
+                let status = event.as_ref().unwrap()["state"]["status"].as_str().unwrap();
+                if status == "started" {
+                    let played_moves = event.as_ref().unwrap()["state"]["moves"].as_str().unwrap();
+                    self.calculate_engine(game_id, played_moves).await
+                } else {
+                    Err("gameFull status != started".to_string())
+                }
             }
-        } else if game_type == "gameState" {
-            let status = event.as_ref().unwrap()["status"].as_str().unwrap();
-            if status == "started" {
-                let played_moves = event.as_ref().unwrap()["moves"].as_str().unwrap();
-                self.calculate_engine(game_id, played_moves).await;
+            "gameState" => {
+                let status = event.as_ref().unwrap()["status"].as_str().unwrap();
+                if status == "started" {
+                    let played_moves = event.as_ref().unwrap()["moves"].as_str().unwrap();
+                    self.calculate_engine(game_id, played_moves).await
+                } else {
+                    Err("gameState status != started".to_string())
+                }
             }
-        } else {
-            println!("notimplemented");
+            _ => todo!(),
         }
     }
 
-    pub async fn calculate_engine(&self, game_id: &str, played_moves: &str) {
+    pub async fn calculate_engine(&self, game_id: &str, played_moves: &str) -> Result<(), String> {
         let mut engine = engine::Engine::new("startpos");
         if !played_moves.is_empty() {
             let move_list = played_moves.split_whitespace();
@@ -159,26 +197,24 @@ impl Lichess {
                 engine.play_uci_move(moves);
             }
         }
-        let uci_move = engine.calc_move();
-        self.make_move(game_id, uci_move)
-            .await
-            .expect("Make move error");
+        let uci_move = engine.calc_move()?.to_string();
+        println!("{}", self.make_move(game_id, uci_move).await?);
+        Ok(())
     }
 
-    pub async fn make_move(
-        &self,
-        game_id: &str,
-        uci_move: String,
-    ) -> Result<String, reqwest::Error> {
+    pub async fn make_move(&self, game_id: &str, uci_move: String) -> Result<String, String> {
         let url = format!("{}/api/bot/game/{game_id}/move/{uci_move}", self.url_base);
         // println!("make_move url: {url}");
-        let response = self
+        match self
             .client
             .post(&url)
             .headers(self.headers.clone())
             .send()
             .await
-            .expect("Response error");
-        response.text().await
+            .map_err(|e| e.to_string())
+        {
+            Ok(response) => response.text().await.map_err(|e| e.to_string()),
+            Err(err) => Err(err),
+        }
     }
 }
